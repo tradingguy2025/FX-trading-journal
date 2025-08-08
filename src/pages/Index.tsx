@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { showSuccess, showError } from "@/utils/toast";
 
 interface Trade {
@@ -31,6 +31,7 @@ interface Trade {
 const Index = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [hoveredElement, setHoveredElement] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     date: '',
@@ -78,6 +79,7 @@ const Index = () => {
       return sum + (isNaN(rr) ? 0 : rr);
     }, 0) / totalTrades || 0;
 
+    // Setup Performance
     const setupStats = setups.map(setup => {
       const setupTrades = trades.filter(t => t.setup === setup);
       const setupWins = setupTrades.filter(t => t.result === 'win').length;
@@ -89,6 +91,7 @@ const Index = () => {
       };
     });
 
+    // Pair Performance
     const pairStats = pairs.map(pair => {
       const pairTrades = trades.filter(t => t.pair === pair);
       const pairWins = pairTrades.filter(t => t.result === 'win').length;
@@ -100,6 +103,7 @@ const Index = () => {
       };
     }).filter(stat => stat.total > 0);
 
+    // Monthly Performance
     const monthlyData = trades.reduce((acc, trade) => {
       const month = new Date(trade.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       if (!acc[month]) {
@@ -116,6 +120,86 @@ const Index = () => {
       total: data.wins + data.losses
     }));
 
+    // Weekly Performance
+    const weeklyData = trades.reduce((acc, trade) => {
+      const date = new Date(trade.date);
+      const weekStart = new Date(date.setDate(date.getDate() - date.getDay()));
+      const weekKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      
+      if (!acc[weekKey]) {
+        acc[weekKey] = { wins: 0, losses: 0 };
+      }
+      acc[weekKey][trade.result]++;
+      return acc;
+    }, {} as Record<string, { wins: number; losses: number }>);
+
+    const weeklyChartData = Object.entries(weeklyData).map(([week, data]) => ({
+      week,
+      wins: data.wins,
+      losses: data.losses,
+      total: data.wins + data.losses
+    }));
+
+    // Detailed Pair Analysis
+    const detailedPairAnalysis = pairs.map(pair => {
+      const pairTrades = trades.filter(t => t.pair === pair);
+      const pairWins = pairTrades.filter(t => t.result === 'win').length;
+      const avgRR = pairTrades.reduce((sum, trade) => {
+        const rr = parseFloat(trade.riskReward);
+        return sum + (isNaN(rr) ? 0 : rr);
+      }, 0) / pairTrades.length || 0;
+      
+      const setupBreakdown = setups.map(setup => {
+        const setupTrades = pairTrades.filter(t => t.setup === setup);
+        const setupWins = setupTrades.filter(t => t.result === 'win').length;
+        return {
+          setup,
+          total: setupTrades.length,
+          wins: setupWins,
+          winRate: setupTrades.length > 0 ? ((setupWins / setupTrades.length) * 100).toFixed(1) : 0
+        };
+      });
+
+      return {
+        pair,
+        total: pairTrades.length,
+        wins: pairWins,
+        winRate: pairTrades.length > 0 ? ((pairWins / pairTrades.length) * 100).toFixed(1) : 0,
+        avgRiskReward: avgRR.toFixed(2),
+        setupBreakdown
+      };
+    }).filter(stat => stat.total > 0);
+
+    // Detailed Setup Analysis
+    const detailedSetupAnalysis = setups.map(setup => {
+      const setupTrades = trades.filter(t => t.setup === setup);
+      const setupWins = setupTrades.filter(t => t.result === 'win').length;
+      const avgRR = setupTrades.reduce((sum, trade) => {
+        const rr = parseFloat(trade.riskReward);
+        return sum + (isNaN(rr) ? 0 : rr);
+      }, 0) / setupTrades.length || 0;
+      
+      const pairBreakdown = pairs.map(pair => {
+        const pairTrades = setupTrades.filter(t => t.pair === pair);
+        const pairWins = pairTrades.filter(t => t.result === 'win').length;
+        return {
+          pair,
+          total: pairTrades.length,
+          wins: pairWins,
+          winRate: pairTrades.length > 0 ? ((pairWins / pairTrades.length) * 100).toFixed(1) : 0
+        };
+      });
+
+      return {
+        setup,
+        total: setupTrades.length,
+        wins: setupWins,
+        winRate: setupTrades.length > 0 ? ((setupWins / setupTrades.length) * 100).toFixed(1) : 0,
+        avgRiskReward: avgRR.toFixed(2),
+        pairBreakdown
+      };
+    }).filter(stat => stat.total > 0);
+
     setAnalytics({
       totalTrades,
       wins,
@@ -124,7 +208,10 @@ const Index = () => {
       avgRiskReward: avgRiskReward.toFixed(2),
       setupStats,
       pairStats,
-      monthlyChartData
+      monthlyChartData,
+      weeklyChartData,
+      detailedPairAnalysis,
+      detailedSetupAnalysis
     });
   };
 
@@ -183,10 +270,15 @@ const Index = () => {
     showSuccess('Trade deleted');
   };
 
+  const getOpacity = (elementId: string) => {
+    if (hoveredElement === elementId) return 1;
+    return 0.2; // 20% opacity when not hovered
+  };
+
   const COLORS = ['#10B981', '#EF4444'];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="min-h-screen bg-gray-950 text-white p-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
@@ -203,7 +295,7 @@ const Index = () => {
 
           <TabsContent value="journal">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-900 border-gray-800">
                 <CardHeader>
                   <CardTitle className="text-xl">Add New Trade</CardTitle>
                   <CardDescription className="text-gray-400">
@@ -220,17 +312,17 @@ const Index = () => {
                           type="date"
                           value={formData.date}
                           onChange={(e) => handleInputChange('date', e.target.value)}
-                          className="bg-gray-700 border-gray-600 text-white"
+                          className="bg-gray-800 border-gray-700 text-white"
                           required
                         />
                       </div>
                       <div>
                         <Label htmlFor="pair" className="text-gray-300">Pair</Label>
                         <Select value={formData.pair} onValueChange={(value) => handleInputChange('pair', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select pair" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {pairs.map(pair => (
                               <SelectItem key={pair} value={pair} className="text-white">{pair}</SelectItem>
                             ))}
@@ -243,10 +335,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="session" className="text-gray-300">Session</Label>
                         <Select value={formData.session} onValueChange={(value) => handleInputChange('session', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select session" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {sessions.map(session => (
                               <SelectItem key={session} value={session} className="text-white">{session}</SelectItem>
                             ))}
@@ -256,10 +348,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="type" className="text-gray-300">Type</Label>
                         <Select value={formData.type} onValueChange={(value) => handleInputChange('type', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             <SelectItem value="long" className="text-white">Long</SelectItem>
                             <SelectItem value="short" className="text-white">Short</SelectItem>
                           </SelectContent>
@@ -271,10 +363,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="setup" className="text-gray-300">Setup</Label>
                         <Select value={formData.setup} onValueChange={(value) => handleInputChange('setup', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select setup" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {setups.map(setup => (
                               <SelectItem key={setup} value={setup} className="text-white">{setup}</SelectItem>
                             ))}
@@ -284,10 +376,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="h4" className="text-gray-300">4H - Pro/Counter</Label>
                         <Select value={formData.h4} onValueChange={(value) => handleInputChange('h4', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select 4H" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {h4Options.map(option => (
                               <SelectItem key={option} value={option} className="text-white">{option}</SelectItem>
                             ))}
@@ -300,10 +392,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="m15" className="text-gray-300">15m - POI</Label>
                         <Select value={formData.m15} onValueChange={(value) => handleInputChange('m15', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select 15m" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {m15Options.map(option => (
                               <SelectItem key={option} value={option} className="text-white">{option}</SelectItem>
                             ))}
@@ -313,10 +405,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="entry" className="text-gray-300">Entry</Label>
                         <Select value={formData.entry} onValueChange={(value) => handleInputChange('entry', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select entry" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             {entryOptions.map(option => (
                               <SelectItem key={option} value={option} className="text-white">{option}</SelectItem>
                             ))}
@@ -329,10 +421,10 @@ const Index = () => {
                       <div>
                         <Label htmlFor="result" className="text-gray-300">Result</Label>
                         <Select value={formData.result} onValueChange={(value) => handleInputChange('result', value)}>
-                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                             <SelectValue placeholder="Select result" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
+                          <SelectContent className="bg-gray-800 border-gray-700">
                             <SelectItem value="win" className="text-white">Win</SelectItem>
                             <SelectItem value="loss" className="text-white">Loss</SelectItem>
                           </SelectContent>
@@ -346,7 +438,7 @@ const Index = () => {
                           placeholder="e.g., 1:2"
                           value={formData.riskReward}
                           onChange={(e) => handleInputChange('riskReward', e.target.value)}
-                          className="bg-gray-700 border-gray-600 text-white"
+                          className="bg-gray-800 border-gray-700 text-white"
                         />
                       </div>
                     </div>
@@ -357,7 +449,7 @@ const Index = () => {
                         id="notes"
                         value={formData.notes}
                         onChange={(e) => handleInputChange('notes', e.target.value)}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                        className="w-full p-2 bg-gray-800 border border-gray-700 rounded text-white"
                         rows={3}
                         placeholder="Add any additional notes..."
                       />
@@ -370,7 +462,7 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-900 border-gray-800">
                 <CardHeader>
                   <CardTitle className="text-xl">Recent Trades</CardTitle>
                   <CardDescription className="text-gray-400">
@@ -380,7 +472,7 @@ const Index = () => {
                 <CardContent>
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     {trades.slice(-5).reverse().map(trade => (
-                      <div key={trade.id} className="bg-gray-700 p-4 rounded-lg">
+                      <div key={trade.id} className="bg-gray-800 p-4 rounded-lg">
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <span className="font-medium">{trade.pair}</span>
@@ -418,35 +510,61 @@ const Index = () => {
           <TabsContent value="analytics">
             {analytics ? (
               <div className="space-y-8">
+                {/* Key Metrics */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card 
+                    className="bg-gray-900 border-gray-800 hover:border-blue-500 transition-all duration-300"
+                    onMouseEnter={() => setHoveredElement('totalTrades')}
+                    onMouseLeave={() => setHoveredElement(null)}
+                  >
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold">{analytics.totalTrades}</div>
-                      <p className="text-gray-400">Total Trades</p>
+                      <div className="text-2xl font-bold" style={{ opacity: getOpacity('totalTrades') }}>
+                        {analytics.totalTrades}
+                      </div>
+                      <p className="text-gray-400" style={{ opacity: getOpacity('totalTrades') }}>Total Trades</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card 
+                    className="bg-gray-900 border-gray-800 hover:border-green-500 transition-all duration-300"
+                    onMouseEnter={() => setHoveredElement('winRate')}
+                    onMouseLeave={() => setHoveredElement(null)}
+                  >
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold text-green-400">{analytics.winRate}%</div>
-                      <p className="text-gray-400">Win Rate</p>
+                      <div className="text-2xl font-bold text-green-400" style={{ opacity: getOpacity('winRate') }}>
+                        {analytics.winRate}%
+                      </div>
+                      <p className="text-gray-400" style={{ opacity: getOpacity('winRate') }}>Win Rate</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card 
+                    className="bg-gray-900 border-gray-800 hover:border-blue-500 transition-all duration-300"
+                    onMouseEnter={() => setHoveredElement('avgRiskReward')}
+                    onMouseLeave={() => setHoveredElement(null)}
+                  >
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold text-blue-400">{analytics.avgRiskReward}</div>
-                      <p className="text-gray-400">Avg Risk/Reward</p>
+                      <div className="text-2xl font-bold text-blue-400" style={{ opacity: getOpacity('avgRiskReward') }}>
+                        {analytics.avgRiskReward}
+                      </div>
+                      <p className="text-gray-400" style={{ opacity: getOpacity('avgRiskReward') }}>Avg Risk/Reward</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card 
+                    className="bg-gray-900 border-gray-800 hover:border-purple-500 transition-all duration-300"
+                    onMouseEnter={() => setHoveredElement('winsLosses')}
+                    onMouseLeave={() => setHoveredElement(null)}
+                  >
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold">{analytics.wins}W/{analytics.losses}L</div>
-                      <p className="text-gray-400">Wins/Losses</p>
+                      <div className="text-2xl font-bold" style={{ opacity: getOpacity('winsLosses') }}>
+                        {analytics.wins}W/{analytics.losses}L
+                      </div>
+                      <p className="text-gray-400" style={{ opacity: getOpacity('winsLosses') }}>Wins/Losses</p>
                     </CardContent>
                   </Card>
                 </div>
 
+                {/* Time-based Analysis */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card className="bg-gray-900 border-gray-800">
                     <CardHeader>
                       <CardTitle>Monthly Performance</CardTitle>
                     </CardHeader>
@@ -467,7 +585,31 @@ const Index = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card className="bg-gray-900 border-gray-800">
+                    <CardHeader>
+                      <CardTitle>Weekly Performance</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <AreaChart data={analytics.weeklyChartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis dataKey="week" stroke="#9CA3AF" />
+                          <YAxis stroke="#9CA3AF" />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151' }}
+                            itemStyle={{ color: '#FFFFFF' }}
+                          />
+                          <Area type="monotone" dataKey="wins" stackId="1" stroke="#10B981" fill="#10B981" fillOpacity={0.6} name="Wins" />
+                          <Area type="monotone" dataKey="losses" stackId="1" stroke="#EF4444" fill="#EF4444" fillOpacity={0.6} name="Losses" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Distribution Analysis */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <Card className="bg-gray-900 border-gray-800">
                     <CardHeader>
                       <CardTitle>Win/Loss Distribution</CardTitle>
                     </CardHeader>
@@ -497,12 +639,10 @@ const Index = () => {
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
-                </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <Card className="bg-gray-800 border-gray-700">
+                  <Card className="bg-gray-900 border-gray-800">
                     <CardHeader>
-                      <CardTitle>Setup Performance</CardTitle>
+                      <CardTitle>Setup Performance Overview</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -527,38 +667,92 @@ const Index = () => {
                       </Table>
                     </CardContent>
                   </Card>
-
-                  <Card className="bg-gray-800 border-gray-700">
-                    <CardHeader>
-                      <CardTitle>Pair Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-gray-300">Pair</TableHead>
-                            <TableHead className="text-gray-300">Total</TableHead>
-                            <TableHead className="text-gray-300">Wins</TableHead>
-                            <TableHead className="text-gray-300">Win Rate</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {analytics.pairStats.map((stat: any) => (
-                            <TableRow key={stat.pair}>
-                              <TableCell className="text-white">{stat.pair}</TableCell>
-                              <TableCell className="text-white">{stat.total}</TableCell>
-                              <TableCell className="text-white">{stat.wins}</TableCell>
-                              <TableCell className="text-white">{stat.winRate}%</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
                 </div>
+
+                {/* Detailed Pair Analysis */}
+                <Card className="bg-gray-900 border-gray-800">
+                  <CardHeader>
+                    <CardTitle>Detailed Pair Analysis</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {analytics.detailedPairAnalysis.map((pairStat: any) => (
+                        <div key={pairStat.pair} className="bg-gray-800 p-4 rounded-lg">
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold">{pairStat.pair}</h3>
+                            <div className="text-sm text-gray-400">
+                              {pairStat.total} trades • {pairStat.winRate}% win rate • Avg RR: {pairStat.avgRiskReward}
+                            </div>
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="text-gray-300">Setup</TableHead>
+                                <TableHead className="text-gray-300">Total</TableHead>
+                                <TableHead className="text-gray-300">Wins</TableHead>
+                                <TableHead className="text-gray-300">Win Rate</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {pairStat.setupBreakdown.map((setup: any) => (
+                                <TableRow key={setup.setup}>
+                                  <TableCell className="text-white">{setup.setup}</TableCell>
+                                  <TableCell className="text-white">{setup.total}</TableCell>
+                                  <TableCell className="text-white">{setup.wins}</TableCell>
+                                  <TableCell className="text-white">{setup.winRate}%</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Detailed Setup Analysis */}
+                <Card className="bg-gray-900 border-gray-800">
+                  <CardHeader>
+                    <CardTitle>Detailed Setup Analysis</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {analytics.detailedSetupAnalysis.map((setupStat: any) => (
+                        <div key={setupStat.setup} className="bg-gray-800 p-4 rounded-lg">
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold">{setupStat.setup}</h3>
+                            <div className="text-sm text-gray-400">
+                              {setupStat.total} trades • {setupStat.winRate}% win rate • Avg RR: {setupStat.avgRiskReward}
+                            </div>
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="text-gray-300">Pair</TableHead>
+                                <TableHead className="text-gray-300">Total</TableHead>
+                                <TableHead className="text-gray-300">Wins</TableHead>
+                                <TableHead className="text-gray-300">Win Rate</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {setupStat.pairBreakdown.map((pair: any) => (
+                                <TableRow key={pair.pair}>
+                                  <TableCell className="text-white">{pair.pair}</TableCell>
+                                  <TableCell className="text-white">{pair.total}</TableCell>
+                                  <TableCell className="text-white">{pair.wins}</TableCell>
+                                  <TableCell className="text-white">{pair.winRate}%</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : (
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-900 border-gray-800">
                 <CardContent className="p-8 text-center">
                   <p className="text-gray-400">Add some trades to see analytics</p>
                 </CardContent>
