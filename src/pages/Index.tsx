@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { showSuccess, showError } from "@/utils/toast";
+import { Camera, Upload } from 'lucide-react';
 
 interface Trade {
   id: string;
@@ -26,6 +27,12 @@ interface Trade {
   result: 'win' | 'loss';
   riskReward: string;
   notes: string;
+  screenshots?: {
+    daily?: string;
+    h4?: string;
+    m15?: string;
+    m1?: string;
+  };
 }
 
 const Index = () => {
@@ -44,7 +51,13 @@ const Index = () => {
     entry: '' as '1m ofra' | '1st tap sweep' | '1st tap' | '',
     result: '' as 'win' | 'loss' | '',
     riskReward: '',
-    notes: ''
+    notes: '',
+    screenshots: {
+      daily: '',
+      h4: '',
+      m15: '',
+      m1: ''
+    }
   });
 
   const pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'AUD/USD', 'NZD/USD', 'USD/CAD'];
@@ -79,7 +92,6 @@ const Index = () => {
       return sum + (isNaN(rr) ? 0 : rr);
     }, 0) / totalTrades || 0;
 
-    // Setup Performance
     const setupStats = setups.map(setup => {
       const setupTrades = trades.filter(t => t.setup === setup);
       const setupWins = setupTrades.filter(t => t.result === 'win').length;
@@ -91,7 +103,6 @@ const Index = () => {
       };
     });
 
-    // Pair Performance
     const pairStats = pairs.map(pair => {
       const pairTrades = trades.filter(t => t.pair === pair);
       const pairWins = pairTrades.filter(t => t.result === 'win').length;
@@ -103,7 +114,6 @@ const Index = () => {
       };
     }).filter(stat => stat.total > 0);
 
-    // Monthly Performance
     const monthlyData = trades.reduce((acc, trade) => {
       const month = new Date(trade.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       if (!acc[month]) {
@@ -120,7 +130,6 @@ const Index = () => {
       total: data.wins + data.losses
     }));
 
-    // Weekly Performance
     const weeklyData = trades.reduce((acc, trade) => {
       const date = new Date(trade.date);
       const weekStart = new Date(date.setDate(date.getDate() - date.getDay()));
@@ -140,7 +149,6 @@ const Index = () => {
       total: data.wins + data.losses
     }));
 
-    // Detailed Pair Analysis
     const detailedPairAnalysis = pairs.map(pair => {
       const pairTrades = trades.filter(t => t.pair === pair);
       const pairWins = pairTrades.filter(t => t.result === 'win').length;
@@ -170,7 +178,6 @@ const Index = () => {
       };
     }).filter(stat => stat.total > 0);
 
-    // Detailed Setup Analysis
     const detailedSetupAnalysis = setups.map(setup => {
       const setupTrades = trades.filter(t => t.setup === setup);
       const setupWins = setupTrades.filter(t => t.result === 'win').length;
@@ -215,6 +222,28 @@ const Index = () => {
     });
   };
 
+  const handleScreenshotUpload = (timeframe: keyof typeof formData.screenshots, file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      setFormData(prev => ({
+        ...prev,
+        screenshots: {
+          ...prev.screenshots,
+          [timeframe]: base64
+        }
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (timeframe: keyof typeof formData.screenshots, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleScreenshotUpload(timeframe, file);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -235,7 +264,8 @@ const Index = () => {
       entry: formData.entry as '1m ofra' | '1st tap sweep' | '1st tap',
       result: formData.result as 'win' | 'loss',
       riskReward: formData.riskReward,
-      notes: formData.notes
+      notes: formData.notes,
+      screenshots: formData.screenshots
     };
 
     const updatedTrades = [...trades, newTrade];
@@ -255,7 +285,13 @@ const Index = () => {
       entry: '' as '1m ofra' | '1st tap sweep' | '1st tap' | '',
       result: '' as 'win' | 'loss' | '',
       riskReward: '',
-      notes: ''
+      notes: '',
+      screenshots: {
+        daily: '',
+        h4: '',
+        m15: '',
+        m1: ''
+      }
     });
   };
 
@@ -272,7 +308,7 @@ const Index = () => {
 
   const getOpacity = (elementId: string) => {
     if (hoveredElement === elementId) return 1;
-    return 0.2; // 20% opacity when not hovered
+    return 0.2;
   };
 
   const COLORS = ['#10B981', '#EF4444'];
@@ -443,6 +479,55 @@ const Index = () => {
                       </div>
                     </div>
 
+                    {/* Screenshot Upload Section */}
+                    <div className="space-y-4">
+                      <Label className="text-gray-300">Trade Screenshots</Label>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
+                          { key: 'daily', label: 'Daily' },
+                          { key: 'h4', label: '4H' },
+                          { key: 'm15', label: '15M' },
+                          { key: 'm1', label: '1M' }
+                        ].map(({ key, label }) => (
+                          <div 
+                            key={key}
+                            className="relative group overflow-hidden rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 hover:border-blue-500 transition-all duration-300"
+                          >
+                            <div className="aspect-square flex items-center justify-center p-4">
+                              {formData.screenshots[key as keyof typeof formData.screenshots] ? (
+                                <img 
+                                  src={formData.screenshots[key as keyof typeof formData.screenshots]} 
+                                  alt={`${label} chart`}
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                              ) : (
+                                <div className="text-center">
+                                  <Camera className="w-8 h-8 mx-auto text-gray-500 mb-2" />
+                                  <p className="text-xs text-gray-500">{label}</p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                              <label 
+                                htmlFor={`screenshot-${key}`}
+                                className="cursor-pointer bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md text-sm transition-colors duration-200 flex items-center gap-1"
+                              >
+                                <Upload className="w-4 h-4" />
+                                Upload
+                              </label>
+                              <input
+                                id={`screenshot-${key}`}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleFileChange(key as keyof typeof formData.screenshots, e)}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     <div>
                       <Label htmlFor="notes" className="text-gray-300">Notes</Label>
                       <textarea
@@ -510,7 +595,6 @@ const Index = () => {
           <TabsContent value="analytics">
             {analytics ? (
               <div className="space-y-8">
-                {/* Key Metrics */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <Card 
                     className="bg-gray-900 border-gray-800 hover:border-blue-500 transition-all duration-300"
@@ -562,7 +646,6 @@ const Index = () => {
                   </Card>
                 </div>
 
-                {/* Time-based Analysis */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <Card className="bg-gray-900 border-gray-800">
                     <CardHeader>
@@ -607,7 +690,6 @@ const Index = () => {
                   </Card>
                 </div>
 
-                {/* Distribution Analysis */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <Card className="bg-gray-900 border-gray-800">
                     <CardHeader>
@@ -669,7 +751,6 @@ const Index = () => {
                   </Card>
                 </div>
 
-                {/* Detailed Pair Analysis */}
                 <Card className="bg-gray-900 border-gray-800">
                   <CardHeader>
                     <CardTitle>Detailed Pair Analysis</CardTitle>
@@ -710,7 +791,6 @@ const Index = () => {
                   </CardContent>
                 </Card>
 
-                {/* Detailed Setup Analysis */}
                 <Card className="bg-gray-900 border-gray-800">
                   <CardHeader>
                     <CardTitle>Detailed Setup Analysis</CardTitle>
@@ -759,10 +839,54 @@ const Index = () => {
               </Card>
             )}
           </TabsContent>
+        
+
         </Tabs>
 
         <MadeWithDyad />
       </div>
+
+      {/* Liquify Morphism SVG Filter */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          <filter id="gooey">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="gooey" />
+            <feBlend in="SourceGraphic" in2="gooey" mode="multiply" />
+          </filter>
+        </defs>
+      </svg>
+
+      <style jsx global>{`
+        .liquify-morphism {
+          filter: url(#gooey);
+          animation: morph 8s ease-in-out infinite;
+        }
+        
+        @keyframes morph {
+          0%, 100% {
+            border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+          }
+          25% {
+            border-radius: 58% 42% 75% 25% / 76% 46% 54% 24%;
+          }
+          50% {
+            border-radius: 50% 50% 33% 67% / 55% 27% 73% 45%;
+          }
+          75% {
+            border-radius: 33% 67% 58% 42% / 63% 68% 32% 37%;
+          }
+        }
+        
+        .screenshot-container {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .screenshot-container:hover {
+          transform: scale(1.05);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+      `}</style>
     </div>
   );
 };
