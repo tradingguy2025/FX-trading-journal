@@ -839,9 +839,9 @@ const Index = () => {
               </Card>
             )}
           </TabsContent>
-        
-
         </Tabs>
+
+        
 
         <MadeWithDyad />
       </div>
@@ -857,7 +857,7 @@ const Index = () => {
         </defs>
       </svg>
 
-      <style jsx global>{`
+      <style>{`
         .liquify-morphism {
           filter: url(#gooey);
           animation: morph 8s ease-in-out infinite;
